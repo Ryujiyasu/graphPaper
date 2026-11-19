@@ -2,7 +2,9 @@
 
 Excel 方眼紙を、方眼紙のためだけに作られたソフトで作ります。保存すると普通の `.xlsx` になり、Excel でそのまま開けます。
 
-**▶ https://ryujiyasu.github.io/graphPaper/**（ブラウザだけで動きます。ファイルはどこにも送りません）
+**[▶ ブラウザで開く](https://ryujiyasu.github.io/graphPaper/)**
+
+インストールは要りません。ブラウザの中だけで動き、作ったファイルや開いたファイルはどこにも送りません。
 
 ![見本の申請書](docs/img/design.png)
 
