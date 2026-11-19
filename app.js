@@ -366,7 +366,7 @@ function blockPalette() {
       btn.onmouseenter = btn.onfocus = () => showPreview(name, btn);
       btn.onmouseleave = btn.onblur = hidePreview;
       const del = document.createElement('button'); del.textContent = '✕'; del.className = 'danger'; del.title = 'このマイブロックを消す';
-      del.onclick = () => { if (confirm(`マイブロック「${def.title}」を消しますか？`)) { delete mine[name]; unregisterMine(name); saveMine(); blockPalette(); } };
+      del.onclick = async () => { if (await ask(`マイブロック「${def.title}」を消しますか？`, '消す')) { delete mine[name]; unregisterMine(name); saveMine(); blockPalette(); } };
       row.append(btn, del);
       host.appendChild(row);
       continue;
@@ -393,10 +393,10 @@ function addMine(def) {
   return key;
 }
 /** Save the boxes inside an area as a block of one's own. */
-function makeMine(area, suggested) {
+async function makeMine(area, suggested) {
   const res = captureBlock(sheet().boxes, area);
   if (res.error) { toast(res.error); return; }
-  const title = prompt('マイブロックの名前', suggested || '');
+  const title = await askText('マイブロックの名前', suggested || '');
   if (title == null) return;
   res.def.title = title.trim().slice(0, 30) || 'マイブロック';
   addMine(res.def); saveMine();
@@ -535,11 +535,11 @@ function blockAction(id, action) {
   const res = action === 'remove' ? removeBlock(s.boxes, s.blocks, id) : moveBlock(s.boxes, s.blocks, id, action === 'up' ? -1 : 1);
   if (apply(res.error ? res : { boxes: res.boxes, blocks: res.blocks }) && action === 'remove') toast('ブロックを消しました（Ctrl+Z で戻せます）');
 }
-function pageAction(k, action) {
+async function pageAction(k, action) {
   if (action === 'remove') {
     const p = pageBands(grid())[k];
     const lost = sheet().boxes.filter((b) => b.r >= p.start && b.r < p.end).length;
-    if (lost && !confirm(`${k + 1}ページ目と、その上の枠 ${lost} 個を消しますか？`)) return;
+    if (lost && !(await ask(`${k + 1}ページ目と、その上の枠 ${lost} 個を消しますか？`, '消す'))) return;
   }
   const res = action === 'remove' ? removePage(sheet(), k) : movePage(sheet(), k, action === 'up' ? -1 : 1);
   apply(res.error ? res : { sheet: res });
@@ -675,7 +675,7 @@ function tabs() {
     t.textContent = s.name;
     t.title = 'ダブルクリックで名前を変える';
     t.onclick = () => switchSheet(i);
-    t.ondblclick = () => { const n = prompt('シート名', s.name); if (n != null) renameSheet(i, n); };
+    t.ondblclick = async () => { const n = await askText('シート名', s.name); if (n != null) renameSheet(i, n); };
     host.appendChild(t);
   });
   const add = document.createElement('button'); add.className = 'tab add'; add.textContent = '＋'; add.title = 'シートを足す';
@@ -703,9 +703,9 @@ function moveSheet(dir) {
   [sheets[active], sheets[j]] = [sheets[j], sheets[active]];
   switchSheet(j);
 }
-function deleteSheet() {
+async function deleteSheet() {
   if (sheets.length < 2) { toast('シートは1枚は残します'); return; }
-  if (sheet().boxes.length && !confirm(`シート「${sheet().name}」を消しますか？`)) return;
+  if (sheet().boxes.length && !(await ask(`シート「${sheet().name}」を消しますか？`, '消す'))) return;
   remember();
   sheets.splice(active, 1);
   switchSheet(Math.min(active, sheets.length - 1));
@@ -732,13 +732,13 @@ function setMode(m) {
 $('mode-design').onclick = () => setMode('design');
 $('mode-fill').onclick = () => setMode('fill');
 
-$('new').onclick = () => {
-  if (sheets.some((s) => s.boxes.length) && !confirm('いまの方眼紙を消して、白紙から始めますか？')) return;
+$('new').onclick = async () => {
+  if (sheets.some((s) => s.boxes.length) && !(await ask('いまの方眼紙を消して、白紙から始めますか？（Ctrl+Z で戻せます）', '白紙にする'))) return;
   remember(); sheets = [newSheet('様式')]; active = 0; selected = null; render();
   status('白紙の方眼紙です。左の「ブロック」を押すと、上から順に積めます。');
 };
-$('sample').onclick = () => {
-  if (sheets.some((s) => s.boxes.length) && !confirm('いまの方眼紙を、見本の申請書に置き換えますか？')) return;
+$('sample').onclick = async () => {
+  if (sheets.some((s) => s.boxes.length) && !(await ask('いまの方眼紙を、見本の申請書に置き換えますか？（Ctrl+Z で戻せます）', '置き換える'))) return;
   remember(); sheets = [sampleForm()]; active = 0; selected = null; render(); status('見本の申請書を開きました。');
 };
 
@@ -849,6 +849,36 @@ function dialog(title, body, actions = [], onClose) {
   $('dlg-actions').replaceChildren(...actions, close);
   d.onclose = () => onClose?.();
   d.showModal();
+}
+/**
+ * A question in the page itself, answered later: Promise<boolean>.
+ * Not window.confirm: inside the desktop app Tauri swaps that for a dialog
+ * that does not wait for the answer, so a "消しますか？" would not hold.
+ */
+function ask(message, yes = 'OK') {
+  return askDialog(message, null, yes).then((v) => v !== null);
+}
+/** A line of text asked for in the page: Promise<string | null>. */
+function askText(label, value = '') {
+  return askDialog(label, value, 'OK');
+}
+function askDialog(message, value, yes) {
+  return new Promise((resolve) => {
+    const d = $('ask');
+    $('ask-text').textContent = message;
+    const input = $('ask-input');
+    input.hidden = value === null;
+    input.value = value ?? '';
+    $('ask-yes').textContent = yes;
+    let answer = null;
+    $('ask-yes').onclick = () => { answer = value === null ? '' : input.value; d.close(); };
+    $('ask-no').onclick = () => d.close();
+    input.onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); $('ask-yes').click(); } };
+    d.onclose = () => resolve(answer);
+    d.showModal();
+    (value === null ? $('ask-yes') : input).focus();
+    if (value !== null) input.select();
+  });
 }
 let toastTimer = 0;
 function toast(text) {
