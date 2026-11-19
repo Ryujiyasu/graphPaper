@@ -25,7 +25,6 @@
   button:hover { border-color: #aab4bf; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-  button.taboo { color: #9aa4ae; border-style: dashed; }
   .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
   main { flex: 1; display: flex; min-height: 0; }
   #tools { width: 184px; padding: 12px 10px; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; overflow: auto; }
@@ -51,11 +50,6 @@
   button.danger { color: var(--danger); border-color: #e9b4ae; }
   .insertline { position: absolute; left: -8px; right: -8px; height: 0; border-top: 3px solid #12a150; z-index: 6; pointer-events: none; }
   .insertline::before { content: attr(data-label); position: absolute; left: 8px; top: 3px; font-size: 11px; background: #12a150; color: #fff; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
-  #paper.stretch { animation: stretch .65s ease-in-out; transform-origin: left center; }
-  #paper.shove { animation: shove .65s ease-in-out; }
-  @keyframes stretch { 0% { transform: scaleX(1); } 35% { transform: scaleX(1.12); } 70% { transform: scaleX(.97); } 100% { transform: scaleX(1); } }
-  @keyframes shove { 0% { transform: translateY(0); } 35% { transform: translateY(24px); } 70% { transform: translateY(-4px); } 100% { transform: translateY(0); } }
-  @media (prefers-reduced-motion: reduce) { #paper.stretch, #paper.shove { animation: none; } }
   #preview { position: fixed; z-index: 30; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.16); padding: 10px; pointer-events: none; }
   #preview .phead { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
   #preview .phead span { color: var(--muted); font-size: 12px; }
@@ -137,9 +131,6 @@
     <button id="save-xlsx" class="primary">Excel で保存</button>
     <button id="pdf">PDF</button>
     <button id="markdown" title="様式と記入値を、AI にも読める文字に">AI 用に書き出す</button>
-    <span class="sep"></span>
-    <button class="taboo" data-taboo="width">列幅を変える</button>
-    <button class="taboo" data-taboo="row">行を挿入</button>
   </div>
 </header>
 <main>

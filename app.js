@@ -841,22 +841,6 @@ $('markdown').onclick = () => {
   dialog('AI 用に書き出す（どの欄がどのセルか、何が書いてあるか）', area, [copy, save]);
 };
 
-// The two things Excel 方眼紙 must never have done to it. The buttons are
-// there; the grid just does not go along with it.
-const TABOO = {
-  width: { motion: 'stretch', say: '……やっぱり、そろっているほうが落ち着きますね。' },
-  row: { motion: 'shove', say: '（ずれそうだったので、そっと戻しました）' },
-};
-for (const b of document.querySelectorAll('[data-taboo]')) {
-  b.onclick = () => {
-    const t = TABOO[b.dataset.taboo];
-    paper.classList.remove('stretch', 'shove');
-    void paper.offsetWidth; // restart the animation
-    paper.classList.add(t.motion);
-    setTimeout(() => toast(t.say), 650);
-  };
-}
-
 function dialog(title, body, actions = [], onClose) {
   const d = $('dlg');
   $('dlg-title').textContent = title;
