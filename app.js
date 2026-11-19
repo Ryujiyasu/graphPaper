@@ -472,14 +472,13 @@ function showPreview(name, btn) {
     art.appendChild(el);
   }
   const foot = document.createElement('div'); foot.className = 'pfoot';
-  foot.textContent = def.rows > room ? `入りきりません（あと ${room} 行）。方眼紙を下に広げてください。`
-    : `${at + 1} 行目に入ります。下にあるものは ${def.rows} 行下がります。`;
-  if (def.rows > room) foot.classList.add('bad');
+  foot.textContent = `${at + 1} 行目に入ります。下にあるものは ${def.rows} 行下がります。` +
+    (def.rows > room ? '入りきらない分は、ページを足します。' : '');
   pop.append(head, art, foot);
   const r = btn.getBoundingClientRect();
   Object.assign(pop.style, { left: `${r.right + 10}px`, top: `${Math.min(r.top, innerHeight - height - 110)}px` });
   pop.hidden = false;
-  if (mode === 'design' && def.rows <= room) {
+  if (mode === 'design') {
     const line = document.createElement('div'); line.className = 'insertline';
     line.style.top = `${ys[at]}px`;
     line.dataset.label = `ここに「${def.title}」`;
@@ -491,16 +490,36 @@ function hidePreview() {
   paper.querySelector('.insertline')?.remove();
 }
 
+/** Pages to add so a block of `rows` fits below everything: 0 when it already does. */
+function pagesNeeded(s, rows) {
+  let grown = s, added = 0;
+  while (grown.grid.rows - bottomRow(grown.boxes, grown.blocks) < rows) {
+    const next = addPage(grown);
+    if (next.error) return { error: next.error };
+    grown = next; added++;
+  }
+  return { sheet: grown, added };
+}
+
 function addBlock(name) {
   if (mode !== 'design') setMode('design');
-  const s = sheet();
   const at = insertRow();
-  const res = insertBlock(s.boxes, s.blocks, name, at, s.grid);
+  const rows = BLOCKS[name].rows;
+  // A full page grows by a page rather than turning the block away, and a
+  // block that would run over a page break starts on the next page instead.
+  let room = pagesNeeded(sheet(), rows);
+  if (room.error) { toast(room.error); return; }
+  const breakAt = pages(room.sheet.grid).starts.find((p) => p > at && p < at + rows);
+  const pad = breakAt != null && rows <= breakAt - (pages(room.sheet.grid).starts.filter((p) => p < breakAt).pop() ?? 0) ? breakAt - at : 0;
+  if (pad) { room = pagesNeeded(room.sheet, rows + pad); if (room.error) { toast(room.error); return; } room.added = pagesNeeded(sheet(), rows + pad).added; }
+  const s = room.sheet;
+  const res = insertBlock(s.boxes, s.blocks, name, at, s.grid, pad);
   if (res.error) { toast(res.error); return; }
   remember();
   setSheet({ ...s, boxes: res.boxes, blocks: res.blocks });
   selected = res.boxes.find((b) => b.block === res.id)?.id || null;
   render();
+  if (room.added) toast(`入りきらないので、ページを ${room.added} 枚足しました（${pages(grid()).starts.length} ページ）`);
   paper.querySelector('.band')?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
 }
 function apply(res) {

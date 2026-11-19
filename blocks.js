@@ -118,12 +118,13 @@ export function bands(boxes, blocks) {
 export const bottomRow = (boxes, blocks) => Math.max(0, ...boxes.map((b) => b.r + b.h), ...bands(boxes, blocks).map((k) => k.end));
 
 /**
- * Insert a block at row `at`, moving everything at or below that row down by
- * the block's height. Returns { boxes, blocks, id } or { error }.
+ * Insert a block at row `at` (after `pad` blank rows), moving everything at
+ * or below that row down by the block's height and the padding.
+ * Returns { boxes, blocks, id } or { error }.
  */
-export function insertBlock(boxes, blocks, name, at, grid) {
+export function insertBlock(boxes, blocks, name, at, grid, pad = 0) {
   const def = BLOCKS[name];
-  const h = def.rows;
+  const h = def.rows + pad;
   const room = grid.rows - bottomRow(boxes, blocks);
   if (h > room) return { error: `入りきりません（あと ${room} 行、このブロックは ${h} 行）。方眼紙を下に広げてください。` };
   const need = def.cols || 24;
@@ -133,8 +134,8 @@ export function insertBlock(boxes, blocks, name, at, grid) {
   const id = `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const moved = boxes.map((b) => (b.r >= at ? { ...b, r: b.r + h } : b));
   const movedBlocks = blocks.map((k) => (k.r >= at ? { ...k, r: k.r + h } : k));
-  const made = def.make(at, grid.cols).map((b) => ({ ...b, block: id }));
-  return { boxes: [...moved, ...made], blocks: [...movedBlocks, { id, name, title: def.title, r: at, rows: h }], id };
+  const made = def.make(at + pad, grid.cols).map((b) => ({ ...b, block: id }));
+  return { boxes: [...moved, ...made], blocks: [...movedBlocks, { id, name, title: def.title, r: at + pad, rows: def.rows }], id };
 }
 
 /** Swap a block with the one above (dir -1) or below (+1). */
