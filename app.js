@@ -11,7 +11,7 @@ import {
 import { sampleForm } from './sample.js';
 import { BLOCKS, GROUPS, MINE, bands, bottomRow, insertBlock, moveBlock, removeBlock, captureBlock, registerMine, unregisterMine, readShared } from './blocks.js';
 
-const VERSION = '0.10.0';
+const VERSION = '0.10.1';
 // The desktop app carries the engine beside its pages; the site takes it from npm.
 const DESKTOP = !!window.__TAURI__;
 const LOCAL = DESKTOP || new URLSearchParams(location.search).get('engine') === 'local';

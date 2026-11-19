@@ -12,7 +12,7 @@
     "desktop:build": "tauri build"
   },
   "devDependencies": {
-    "@oxidocs/wasm": "0.10.0",
+    "@oxidocs/wasm": "0.10.1",
     "@tauri-apps/cli": "2.12.5"
   }
 }
