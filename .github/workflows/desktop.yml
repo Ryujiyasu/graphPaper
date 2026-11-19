@@ -1,0 +1,66 @@
+name: Desktop
+
+# Builds the graphPaper desktop app for Windows (NSIS .exe and .msi) and
+# Linux (.deb and .AppImage) and attaches the installers to a DRAFT GitHub
+# Release. Publish the draft to make it public.
+#
+# Trigger: push a tag like v0.1.0, after bumping the version in
+# package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: test
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # The pinned engine (@oxidocs/wasm) and Tauri CLI come from package-lock.json.
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: npx tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: 'graphPaper ${{ github.ref_name }}'
+          releaseBody: |
+            方眼紙専用ソフト graphPaper のデスクトップ版です。インストールすると、ネットにつながっていなくても使えます。
+
+            - Windows: `graphPaper_*_x64-setup.exe`（おすすめ）または `.msi`
+            - Linux: `.deb` または `.AppImage`
+
+            ブラウザ版: https://ryujiyasu.github.io/graphPaper/
+          releaseDraft: true
+          prerelease: false

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>graphPaper 方眼紙専用ソフト</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cpath d=%22M0 0h16v16H0z%22 fill=%22%23fff%22/%3E%3Cpath d=%22M4 0v16M8 0v16M12 0v16M0 4h16M0 8h16M0 12h16%22 stroke=%22%231f6feb%22/%3E%3C/svg%3E">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <meta name="description" content="Excel 方眼紙を、方眼紙のためだけに作られたソフトで作る。保存すると普通の .xlsx になり、Excel でそのまま開ける。">
 <style>
   :root {
@@ -16,7 +16,10 @@
   body { font-family: "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; color: var(--ink); background: var(--bg); display: flex; flex-direction: column; }
   header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { font-size: 16px; margin: 0 8px 0 0; white-space: nowrap; }
-  header h1 small { font-weight: normal; color: var(--muted); font-size: 12px; margin-left: 6px; }
+  header h1 { display: flex; align-items: center; }
+  header h1 .logo { height: 24px; display: block; }
+  @media (max-width: 1500px) { header h1 small { display: none; } }
+  header h1 small { font-weight: normal; color: var(--muted); font-size: 12px; margin-left: 10px; }
   .bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   button, .button { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer; white-space: nowrap; }
   button:hover { border-color: #aab4bf; }
@@ -30,8 +33,37 @@
   #tools button { text-align: left; }
   #tools .stack { display: flex; flex-wrap: wrap; gap: 4px; }
   #tools .stack button { padding: 4px 7px; font-size: 12px; }
+  #tools .btabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); gap: 0; }
+  #tools .btabs button { border: 0; border-radius: 0; background: none; padding: 4px 6px; font-size: 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  #tools .btabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  #tools .blist { flex-direction: column; flex-wrap: nowrap; padding-top: 4px; min-height: 120px; }
+  #tools .blist button { width: 100%; }
+  #tools .blist .mine { display: flex; gap: 3px; }
+  #tools .blist .mine button:first-child { flex: 1; }
+  #tools .blist .mine button.danger { width: auto; padding: 4px 6px; }
+  #tools .minetools { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed var(--line); }
+  #tools .minetools .button { font-size: 12px; padding: 4px 7px; text-align: left; }
   .band { position: absolute; left: -6px; right: -6px; border-left: 3px solid var(--accent); background: rgba(31,111,235,.04); pointer-events: none; }
-  .band::before { content: attr(data-title); position: absolute; left: -3px; top: -16px; font-size: 10px; color: #fff; background: var(--accent); padding: 0 5px; border-radius: 3px 3px 0 0; }
+  .bandbar { position: absolute; left: -9px; transform: translateY(-100%); display: flex; gap: 2px; align-items: center; z-index: 5; background: var(--accent); border-radius: 4px 4px 0 0; padding: 1px 2px 1px 6px; }
+  .bandbar span { font-size: 11px; color: #fff; margin-right: 4px; white-space: nowrap; }
+  .bandbar button { padding: 0 6px; font-size: 11px; line-height: 17px; border: 0; background: rgba(255,255,255,.92); }
+  .bandbar button.danger { background: #fff; color: var(--danger); font-weight: 600; }
+  button.danger { color: var(--danger); border-color: #e9b4ae; }
+  .insertline { position: absolute; left: -8px; right: -8px; height: 0; border-top: 3px solid #12a150; z-index: 6; pointer-events: none; }
+  .insertline::before { content: attr(data-label); position: absolute; left: 8px; top: 3px; font-size: 11px; background: #12a150; color: #fff; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+  #paper.stretch { animation: stretch .65s ease-in-out; transform-origin: left center; }
+  #paper.shove { animation: shove .65s ease-in-out; }
+  @keyframes stretch { 0% { transform: scaleX(1); } 35% { transform: scaleX(1.12); } 70% { transform: scaleX(.97); } 100% { transform: scaleX(1); } }
+  @keyframes shove { 0% { transform: translateY(0); } 35% { transform: translateY(24px); } 70% { transform: translateY(-4px); } 100% { transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { #paper.stretch, #paper.shove { animation: none; } }
+  #preview { position: fixed; z-index: 30; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.16); padding: 10px; pointer-events: none; }
+  #preview .phead { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+  #preview .phead span { color: var(--muted); font-size: 12px; }
+  #preview .pbody { position: relative; background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px), linear-gradient(to bottom, var(--grid) 1px, transparent 1px); outline: 1px solid var(--grid); font-family: "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  #preview .pbox { position: absolute; display: flex; align-items: center; padding: 0 2px; overflow: hidden; white-space: pre; line-height: 1.1; }
+  #preview .pbox.b-box { border: 1px solid #000; } #preview .pbox.b-thick { border: 2px solid #000; } #preview .pbox.b-under { border-bottom: 1px solid #000; }
+  #preview .pfoot { font-size: 11px; color: var(--muted); margin-top: 6px; max-width: 300px; }
+  #preview .pfoot.bad { color: var(--danger); }
   #tools .hint { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
   #stage { flex: 1; overflow: auto; padding: 24px; }
   #sheet { margin: 0 auto; width: max-content; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.12); padding: 57px; overflow: visible; }
@@ -63,6 +95,7 @@
   .box.stamp .t { color: #808080; }
   .ghost { position: absolute; border: 2px dashed var(--accent); background: rgba(31,111,235,.08); pointer-events: none; z-index: 3; }
   .ghost.bad { border-color: var(--danger); background: rgba(201,55,44,.08); }
+  .ghost.capture { border-color: #12a150; background: rgba(18,161,80,.08); }
   .box textarea, .box input, .box select { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; padding: 2px 3px; font: inherit; background: rgba(255,255,230,.95); resize: none; outline: 2px solid var(--accent); }
   .box .opts { display: flex; gap: 10px; flex-wrap: wrap; }
   .box .opts label { cursor: pointer; }
@@ -93,7 +126,7 @@
 </head>
 <body>
 <header>
-  <h1>graphPaper<small>方眼紙専用ソフト。保存すると、Excel でそのまま開ける</small></h1>
+  <h1><img src="assets/logo.svg" alt="GraphPaper" class="logo"><small>方眼紙専用ソフト。保存すると、Excel でそのまま開ける</small></h1>
   <div class="bar">
     <button id="mode-design" class="on" title="枠を描いて様式を作る">作る</button>
     <button id="mode-fill" title="作った様式に記入する">記入する</button>
@@ -112,10 +145,11 @@
 <main>
   <aside id="tools">
     <h2>ブロック（押すと差し込む）</h2>
-    <div id="blocks" class="stack"></div>
+    <div id="block-tabs" class="btabs"></div>
+    <div id="blocks" class="stack blist"></div>
     <h2>枠を描く（ドラッグ）</h2>
     <div id="kinds" class="stack"></div>
-    <p class="hint">ブロックは、選んでいる枠の下に入ります。何も選んでいなければいちばん下に。<br>方眼の上をドラッグすると枠ができます。枠はドラッグで移動、右下の角で大きさを変えられます。<br>ダブルクリックか文字キーで文字を入力。Delete で削除、Ctrl+Z で元に戻す。</p>
+    <p class="hint">ブロックは選んでいる枠の下に、何も選んでいなければいちばん下に入ります。消すときは、ブロックの上に出る「✕ 削除」で。<br>方眼の上をドラッグすると枠ができます。枠はドラッグで移動、右下の角で大きさを変えられます。<br>ダブルクリックか文字キーで文字を入力。Delete で削除、Ctrl+Z で元に戻す。</p>
   </aside>
   <section id="stage"><div id="sheet"><div id="paper"></div></div></section>
   <aside id="inspector"></aside>
@@ -127,6 +161,7 @@
   <span class="status" id="status"></span>
 </footer>
 <div id="toast"></div>
+<div id="preview" hidden></div>
 <dialog id="dlg"><header><strong id="dlg-title"></strong><span class="bar" id="dlg-actions"></span></header><div class="body" id="dlg-body"></div></dialog>
 <script type="module" src="./app.js"></script>
 </body>

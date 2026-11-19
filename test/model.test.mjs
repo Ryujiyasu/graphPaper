@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-// node --test test/  (no engine needed: the model alone)
+// npm test  (no engine needed: the model alone)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { newGrid, pages, pageBands, movePage, addPage, removePage, makeBox, nameInputs, excelName, columnPixels, parseRef, sheetName } from '../model.js';
@@ -53,4 +53,20 @@ test('Excel widths, references and sheet names', () => {
   assert.deepEqual(parseRef("'様式'!$B$4:$I$5"), { r: 3, c: 1, h: 2, w: 8 });
   assert.equal(sheetName('a/b', []), 'a_b');
   assert.equal(sheetName('様式', ['様式']), '様式(2)');
+});
+
+import { captureBlock, registerMine, readShared, BLOCKS } from '../blocks.js';
+
+test('BlockMaker keeps the boxes inside the area, without their values', () => {
+  const s = sampleForm();
+  const label = s.boxes.find((b) => b.text === '事業の名称');
+  const res = captureBlock(s.boxes, { r: label.r, c: 0, h: 4, w: 34 });
+  assert.equal(res.def.rows, 4);
+  assert.ok(res.def.boxes.every((b) => b.r >= 0 && b.r + b.h <= 4 && !('value' in b)));
+  registerMine('mine:test', res.def);
+  const made = BLOCKS['mine:test'].make(10, 34);
+  assert.equal(made.length, res.def.boxes.length);
+  assert.ok(made.every((b) => b.r >= 10 && b.value === ''));
+  const shared = readShared(JSON.stringify({ blocks: [res.def, { title: 'bad', rows: 2, boxes: [{ kind: 'script', r: 0, c: 0, h: 1, w: 1 }] }] }));
+  assert.equal(shared.length, 1);
 });

@@ -2,3 +2,6 @@ engine/
 *.pdf
 __pycache__/
 node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/

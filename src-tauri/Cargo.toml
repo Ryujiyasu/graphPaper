@@ -1,0 +1,18 @@
+[package]
+name = "graphpaper"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "graphPaper — 方眼紙専用ソフト"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+strip = true
+lto = true

@@ -9,10 +9,12 @@ import {
   newSheet, newGrid, sheetName, MAX_COLS, MAX_ROWS,
 } from './model.js';
 import { sampleForm } from './sample.js';
-import { BLOCKS, bands, bottomRow, insertBlock, moveBlock, removeBlock } from './blocks.js';
+import { BLOCKS, GROUPS, MINE, bands, bottomRow, insertBlock, moveBlock, removeBlock, captureBlock, registerMine, unregisterMine, readShared } from './blocks.js';
 
 const VERSION = '0.10.0';
-const LOCAL = new URLSearchParams(location.search).get('engine') === 'local';
+// The desktop app carries the engine beside its pages; the site takes it from npm.
+const DESKTOP = !!window.__TAURI__;
+const LOCAL = DESKTOP || new URLSearchParams(location.search).get('engine') === 'local';
 const ENGINE = LOCAL ? './engine/' : `https://unpkg.com/@oxidocs/wasm@${VERSION}/`;
 const FONTS = LOCAL ? './engine/fonts-plugin.js' : `https://cdn.jsdelivr.net/npm/@oxidocs/wasm-fonts@${VERSION}/index.js`;
 
@@ -81,8 +83,23 @@ function render() {
   if (band) {
     const el = document.createElement('div'); el.className = 'band';
     Object.assign(el.style, { top: `${ys[band.r]}px`, height: `${ys[band.end] - ys[band.r]}px` });
-    el.dataset.title = BLOCKS[band.name]?.title || 'ブロック';
     paper.appendChild(el);
+    // The block's own bar: its name and what can be done to it, on the page.
+    const bar = document.createElement('div'); bar.className = 'bandbar';
+    bar.style.top = `${ys[band.r]}px`;
+    const name = document.createElement('span'); name.textContent = `ブロック「${band.title || BLOCKS[band.name]?.title || ''}」`;
+    bar.appendChild(name);
+    for (const [act, text, title] of [['up', '↑', '上へ'], ['down', '↓', '下へ'], ['save', '★ マイブロックに', 'いまの形をマイブロックとして保存'], ['remove', '✕ 削除', 'このブロックを消す（Ctrl+Z で戻せます）']]) {
+      const b = document.createElement('button'); b.textContent = text; b.title = title;
+      if (act === 'remove') b.className = 'danger';
+      b.onclick = (e) => {
+        e.stopPropagation();
+        if (act === 'save') makeMine({ r: band.r, c: 0, h: band.end - band.r, w: grid().cols }, `${band.title || BLOCKS[band.name]?.title || 'ブロック'}（マイ）`);
+        else blockAction(band.id, act);
+      };
+      bar.appendChild(b);
+    }
+    paper.appendChild(bar);
   }
   pageMarks();
   for (const b of sheet().boxes) paper.appendChild(boxElement(b));
@@ -204,7 +221,7 @@ paper.addEventListener('pointerdown', (e) => {
   if (mode !== 'design' || e.button !== 0 || e.target.closest('textarea,input,select,button')) return;
   commitEdit();
   const at = cellAt(e);
-  const el = e.target.closest('.box');
+  const el = tool === 'capture' ? null : e.target.closest('.box');
   if (el) {
     const b = byId(el.dataset.id);
     selected = b.id;
@@ -223,7 +240,8 @@ paper.addEventListener('pointermove', (e) => {
   if (!drag.moved) return;
   if (drag.kind === 'create') {
     drag.area = span(drag.start, at);
-    ghost(drag.area, fitsHere({ id: '', ...drag.area }));
+    ghost(drag.area, tool === 'capture' || fitsHere({ id: '', ...drag.area }));
+    paper.querySelector('.ghost')?.classList.toggle('capture', tool === 'capture');
     return;
   }
   const b = byId(drag.id), f = drag.from;
@@ -237,6 +255,7 @@ paper.addEventListener('pointerup', () => {
   if (!drag) return;
   const d = drag; drag = null; clearGhost();
   if (!d.moved || !d.area) return;
+  if (d.kind === 'create' && tool === 'capture') { makeMine(d.area); return; }
   if (!fitsHere({ id: d.id || '', ...d.area })) { toast('ほかの枠と重なるところには置けません（セル結合は重ねられないので）'); return; }
   remember();
   if (d.kind === 'create') {
@@ -307,6 +326,7 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveXlsx(); return; }
   const b = selected && byId(selected);
   if (!b || mode !== 'design') return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && e.shiftKey && b.block) { e.preventDefault(); blockAction(b.block, 'remove'); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remember(); sheet().boxes = sheet().boxes.filter((x) => x.id !== b.id); selected = null; render(); return; }
   const arrows = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
   if (arrows[e.key]) {
@@ -327,22 +347,154 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---- blocks, pages -----------------------------------------------------------
+let blockTab = GROUPS[0];
 function blockPalette() {
+  const tabsEl = $('block-tabs'); tabsEl.textContent = '';
+  for (const g of GROUPS) {
+    const t = document.createElement('button'); t.textContent = g; t.className = g === blockTab ? 'on' : '';
+    t.onclick = () => { blockTab = g; blockPalette(); };
+    tabsEl.appendChild(t);
+  }
   const host = $('blocks'); host.textContent = '';
+  if (blockTab === MINE) minePalette(host);
   for (const [name, def] of Object.entries(BLOCKS)) {
+    if (def.group !== blockTab) continue;
+    if (def.mine) {
+      const row = document.createElement('div'); row.className = 'mine';
+      const btn = document.createElement('button'); btn.textContent = def.title;
+      btn.onclick = () => { hidePreview(); addBlock(name); };
+      btn.onmouseenter = btn.onfocus = () => showPreview(name, btn);
+      btn.onmouseleave = btn.onblur = hidePreview;
+      const del = document.createElement('button'); del.textContent = '✕'; del.className = 'danger'; del.title = 'このマイブロックを消す';
+      del.onclick = () => { if (confirm(`マイブロック「${def.title}」を消しますか？`)) { delete mine[name]; unregisterMine(name); saveMine(); blockPalette(); } };
+      row.append(btn, del);
+      host.appendChild(row);
+      continue;
+    }
     const btn = document.createElement('button');
-    btn.textContent = def.title; btn.title = `${def.rows} 行`;
-    btn.onclick = () => addBlock(name);
+    btn.textContent = def.title;
+    btn.onclick = () => { hidePreview(); addBlock(name); };
+    btn.onmouseenter = btn.onfocus = () => showPreview(name, btn);
+    btn.onmouseleave = btn.onblur = hidePreview;
     host.appendChild(btn);
   }
 }
-/** Insert below the selected box's block (or the selected box), else at the bottom. */
-function addBlock(name) {
-  if (mode !== 'design') setMode('design');
+// ---- BlockMaker ------------------------------------------------------------------
+const MINE_STORE = 'graphPaper:blocks';
+let mine = {};
+function saveMine() { try { localStorage.setItem(MINE_STORE, JSON.stringify(mine)); } catch { /* storage off */ } }
+function loadMine() {
+  try { mine = JSON.parse(localStorage.getItem(MINE_STORE) || '{}') || {}; } catch { mine = {}; }
+  for (const [key, def] of Object.entries(mine)) registerMine(key, def);
+}
+function addMine(def) {
+  const key = `mine:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  mine[key] = def; registerMine(key, def);
+  return key;
+}
+/** Save the boxes inside an area as a block of one's own. */
+function makeMine(area, suggested) {
+  const res = captureBlock(sheet().boxes, area);
+  if (res.error) { toast(res.error); return; }
+  const title = prompt('マイブロックの名前', suggested || '');
+  if (title == null) return;
+  res.def.title = title.trim().slice(0, 30) || 'マイブロック';
+  addMine(res.def); saveMine();
+  tool = 'label'; palette();
+  blockTab = MINE; blockPalette();
+  toast(`マイブロック「${res.def.title}」を作りました（${res.def.rows} 行）` + (res.partial ? `。囲みからはみ出した枠 ${res.partial} 個は入れていません` : ''));
+}
+function minePalette(host) {
+  const tools = document.createElement('div'); tools.className = 'minetools';
+  const make = document.createElement('button'); make.textContent = tool === 'capture' ? '囲んでください…（やめる）' : '＋ 範囲を囲んで作る';
+  make.className = tool === 'capture' ? 'on' : '';
+  make.title = '方眼紙の上をドラッグして囲んだ枠が、マイブロックになります';
+  make.onclick = () => { if (mode !== 'design') setMode('design'); tool = tool === 'capture' ? 'label' : 'capture'; palette(); blockPalette(); if (tool === 'capture') toast('ブロックにしたい枠を、ドラッグで囲んでください'); };
+  const out = document.createElement('button'); out.textContent = '書き出す';
+  out.title = 'マイブロックをファイルにして、ほかの人に渡せます';
+  out.onclick = () => {
+    const list = Object.values(mine);
+    if (!list.length) { toast('マイブロックがまだありません'); return; }
+    download(JSON.stringify({ graphPaper: 'blocks', version: 1, blocks: list }, null, 1), 'マイブロック.graphpaper-blocks.json', 'application/json');
+  };
+  const inp = document.createElement('label'); inp.className = 'button'; inp.textContent = '読み込む';
+  const file = document.createElement('input'); file.type = 'file'; file.accept = '.json'; file.hidden = true;
+  file.onchange = async () => {
+    const f = file.files[0]; if (!f) return;
+    try {
+      const list = readShared(await f.text());
+      if (!list.length) { toast('読み込めるブロックがありませんでした'); return; }
+      for (const def of list) addMine(def);
+      saveMine(); blockPalette();
+      toast(`マイブロックを ${list.length} 個読み込みました`);
+    } catch (e) { toast('読み込めませんでした: ' + (e.message || e)); }
+  };
+  inp.appendChild(file);
+  tools.append(make, out, inp);
+  host.appendChild(tools);
+  if (!Object.keys(mine).length) {
+    const p = document.createElement('p'); p.className = 'hint';
+    p.textContent = 'よく使う欄の組み合わせを、自分のブロックにできます。枠を並べてから「範囲を囲んで作る」で囲むか、ブロックの上のバーの「★」から。';
+    host.appendChild(p);
+  }
+}
+
+/** Where a block goes: below the selected box's block (or the selected box), else at the bottom. */
+function insertRow() {
   const s = sheet();
   const sel = selected && byId(selected);
   const band = sel?.block && bands(s.boxes, s.blocks).find((k) => k.id === sel.block);
-  const at = band ? band.end : sel ? sel.r + sel.h : bottomRow(s.boxes, s.blocks);
+  return band ? band.end : sel ? sel.r + sel.h : bottomRow(s.boxes, s.blocks);
+}
+
+/** A small drawing of the block beside the palette, and a line on the page where it goes. */
+function showPreview(name, btn) {
+  const def = BLOCKS[name], g = grid();
+  const boxes = def.make(0, g.cols);
+  const width = 300, cell = width / g.cols, height = Math.max(1, def.rows) * cell;
+  const pop = $('preview');
+  pop.textContent = '';
+  const head = document.createElement('div'); head.className = 'phead';
+  const at = insertRow();
+  const room = g.rows - bottomRow(sheet().boxes, sheet().blocks);
+  head.innerHTML = `<strong>${def.title}</strong><span>${def.rows} 行</span>`;
+  const art = document.createElement('div'); art.className = 'pbody';
+  Object.assign(art.style, { width: `${width}px`, height: `${height}px`, backgroundSize: `${cell}px ${cell}px` });
+  for (const b of boxes) {
+    const el = document.createElement('div');
+    el.className = `pbox b-${b.border}`;
+    Object.assign(el.style, {
+      left: `${b.c * cell}px`, top: `${b.r * cell}px`, width: `${b.w * cell}px`, height: `${b.h * cell}px`,
+      background: b.fill ? `#${b.fill}` : isInput(b) ? 'rgba(31,111,235,.08)' : '', fontSize: `${Math.max(6, b.size * 4 / 3 * cell / 20)}px`,
+      fontWeight: b.bold ? 700 : 400, justifyContent: b.align === 'center' ? 'center' : b.align === 'right' ? 'flex-end' : 'flex-start',
+    });
+    el.textContent = isInput(b) ? '' : b.kind === 'stamp' ? (b.text || '') : b.text;
+    art.appendChild(el);
+  }
+  const foot = document.createElement('div'); foot.className = 'pfoot';
+  foot.textContent = def.rows > room ? `入りきりません（あと ${room} 行）。方眼紙を下に広げてください。`
+    : `${at + 1} 行目に入ります。下にあるものは ${def.rows} 行下がります。`;
+  if (def.rows > room) foot.classList.add('bad');
+  pop.append(head, art, foot);
+  const r = btn.getBoundingClientRect();
+  Object.assign(pop.style, { left: `${r.right + 10}px`, top: `${Math.min(r.top, innerHeight - height - 110)}px` });
+  pop.hidden = false;
+  if (mode === 'design' && def.rows <= room) {
+    const line = document.createElement('div'); line.className = 'insertline';
+    line.style.top = `${ys[at]}px`;
+    line.dataset.label = `ここに「${def.title}」`;
+    paper.appendChild(line);
+  }
+}
+function hidePreview() {
+  $('preview').hidden = true;
+  paper.querySelector('.insertline')?.remove();
+}
+
+function addBlock(name) {
+  if (mode !== 'design') setMode('design');
+  const s = sheet();
+  const at = insertRow();
   const res = insertBlock(s.boxes, s.blocks, name, at, s.grid);
   if (res.error) { toast(res.error); return; }
   remember();
@@ -362,7 +514,7 @@ function apply(res) {
 function blockAction(id, action) {
   const s = sheet();
   const res = action === 'remove' ? removeBlock(s.boxes, s.blocks, id) : moveBlock(s.boxes, s.blocks, id, action === 'up' ? -1 : 1);
-  apply(res.error ? res : { boxes: res.boxes, blocks: res.blocks });
+  if (apply(res.error ? res : { boxes: res.boxes, blocks: res.blocks }) && action === 'remove') toast('ブロックを消しました（Ctrl+Z で戻せます）');
 }
 function pageAction(k, action) {
   if (action === 'remove') {
@@ -409,8 +561,9 @@ function inspector() {
   const band = b.block && bands(s.boxes, s.blocks).find((k) => k.id === b.block);
   if (band) {
     const d = document.createElement('div'); d.className = 'seg';
-    for (const [act, label] of [['up', '↑ 上へ'], ['down', '↓ 下へ'], ['remove', 'ブロックごと消す']]) {
+    for (const [act, label] of [['up', '↑ 上へ'], ['down', '↓ 下へ'], ['remove', '✕ ブロックを消す']]) {
       const btn = document.createElement('button'); btn.textContent = label; btn.onclick = () => blockAction(band.id, act);
+      if (act === 'remove') btn.className = 'danger';
       d.appendChild(btn);
     }
     row(`ブロック「${BLOCKS[band.name]?.title || ''}」`, d);
@@ -613,7 +766,21 @@ async function buildXlsx() {
 }
 const bookTitle = () => titleOf(sheets[0].boxes);
 const fileTitle = () => bookTitle().replace(/[\\/:*?"<>|]/g, '_');
-function download(data, name, type) {
+/** Save through the system's save dialog in the desktop app, as a download on the site. */
+async function download(data, name, type) {
+  if (DESKTOP) {
+    const T = window.__TAURI__;
+    const ext = name.split('.').pop();
+    const filters = [{ name: { xlsx: 'Excel ブック', pdf: 'PDF', md: 'Markdown' }[ext] || ext, extensions: [ext] }];
+    const path = T.dialog ? await T.dialog.save({ defaultPath: name, filters })
+      : await T.core.invoke('plugin:dialog|save', { options: { defaultPath: name, filters } });
+    if (!path) return false;
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+    if (T.fs) await T.fs.writeFile(path, bytes);
+    else await T.core.invoke('plugin:fs|write_file', bytes, { headers: { path: encodeURIComponent(path), options: '{}' } });
+    toast(`保存しました: ${path}`);
+    return true;
+  }
   const url = URL.createObjectURL(new Blob([data], { type }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.appendChild(a); a.click(); a.remove();
@@ -624,7 +791,7 @@ async function saveXlsx() {
   try {
     status('Excel ファイルを作っています…');
     const { xlsx } = await buildXlsx();
-    download(xlsx, fileTitle() + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    if (await download(xlsx, fileTitle() + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') === false) { status('保存をやめました'); return; }
     status(`保存しました（${sheets.length} シート、${Math.round(xlsx.length / 1024)} KB）。Excel で開くと、同じ方眼紙です。`);
   } catch (err) { console.error(err); status('保存できませんでした: ' + (err.message || err), true); }
 }
@@ -655,11 +822,21 @@ $('markdown').onclick = () => {
   dialog('AI 用に書き出す（どの欄がどのセルか、何が書いてあるか）', area, [copy, save]);
 };
 
+// The two things Excel 方眼紙 must never have done to it. The buttons are
+// there; the grid just does not go along with it.
 const TABOO = {
-  width: '方眼紙なので、列幅は変えられません。変える必要もありません。（方眼紙を広げるのは右のパネルから）',
-  row: '行の挿入は禁忌です。印刷がずれます。……ブロックの挿入なら、ずれません（左の「ブロック」）。',
+  width: { motion: 'stretch', say: '……やっぱり、そろっているほうが落ち着きますね。' },
+  row: { motion: 'shove', say: '（ずれそうだったので、そっと戻しました）' },
 };
-for (const b of document.querySelectorAll('[data-taboo]')) b.onclick = () => toast(TABOO[b.dataset.taboo]);
+for (const b of document.querySelectorAll('[data-taboo]')) {
+  b.onclick = () => {
+    const t = TABOO[b.dataset.taboo];
+    paper.classList.remove('stretch', 'shove');
+    void paper.offsetWidth; // restart the animation
+    paper.classList.add(t.motion);
+    setTimeout(() => toast(t.say), 650);
+  };
+}
 
 function dialog(title, body, actions = [], onClose) {
   const d = $('dlg');
@@ -688,6 +865,7 @@ try {
   if (saved?.sheets?.length) { sheets = saved.sheets; active = Math.min(saved.active || 0, sheets.length - 1); protect = saved.protect ?? true; }
 } catch { /* storage off */ }
 if (!sheets.length) sheets = [sampleForm()];
+loadMine();
 palette();
 blockPalette();
 render();

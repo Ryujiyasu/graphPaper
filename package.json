@@ -1,0 +1,18 @@
+{
+  "name": "graphpaper",
+  "private": true,
+  "version": "0.1.0",
+  "description": "方眼紙専用ソフト。保存すると、Excel でそのまま開ける .xlsx になる",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "assemble": "node scripts/assemble.mjs",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
+  },
+  "devDependencies": {
+    "@oxidocs/wasm": "0.10.0",
+    "@tauri-apps/cli": "2.12.5"
+  }
+}
